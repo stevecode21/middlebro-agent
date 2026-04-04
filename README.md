@@ -12,6 +12,67 @@ Built for agent builders who need a control point for prompt injection, context 
 - Inspect risky agent behavior across tools, execution flows, and outbound traffic
 - Enforce policy by allowing, sanitizing, blocking, or logging suspicious behavior
 
+## How Middlebro Fits
+
+Middlebro sits between the agent and the attack surface around it.
+
+Without a control point, malicious instructions and risky execution or boundary events can flow straight into the agent and out into real systems. With Middlebro in place, those events hit a security layer first, where policy can inspect, sanitize, block, or log them before impact.
+
+```mermaid
+flowchart TB
+    subgraph W[Without Middlebro]
+        U1[User request] --> A1[AI Agent]
+        X1[Attacker] --> I1[Instruction attacks]
+        X1 --> E1[Execution attacks]
+        X1 --> N1[Boundary attacks<br/>DoS / SSRF / exfiltration]
+        I1 --> A1
+        E1 --> A1
+        N1 --> A1
+        A1 --> R1[Unsafe output / system impact]
+    end
+
+    subgraph M[With Middlebro]
+        U2[User request] --> A2[AI Agent]
+        X2[Attacker] --> I2[Instruction attacks]
+        X2 --> E2[Execution attacks]
+        X2 --> N2[Boundary attacks<br/>DoS / SSRF / exfiltration]
+        I2 --> MB[Middlebro]
+        E2 --> MB
+        N2 --> MB
+        A2 --> MB
+        MB --> R2[Trusted behavior / reduced impact]
+    end
+```
+
+## How Middlebro Works
+
+Middlebro watches the events an agent produces and turns them into security decisions before they become system impact.
+
+At a high level, the agent emits context, action, or network-related events. Those events are routed through Middlebro, where they are detected, scored against policy, and resolved into an enforcement decision such as allow, sanitize, block, or log.
+
+```mermaid
+flowchart TB
+    U[User / Data / Tools / Network] --> A[AI Agent]
+
+    A --> E1[1. Agent emits an event<br/>context / action / network request]
+    E1 --> E2[2. Event is routed through Middlebro]
+
+    subgraph M[Middlebro]
+        D[3. Detect<br/>classify threat and source]
+        S[4. Score<br/>evaluate risk and policy]
+        P[5. Decide<br/>allow / sanitize / block / log]
+    end
+
+    E2 --> D
+    D --> S
+    S --> P
+
+    P -->|Allow| R1[Safe execution / trusted response]
+    P -->|Sanitize| R2[Sanitized context / reduced risk]
+    P -->|Block| R3[Blocked action / prevented impact]
+    P -->|Log| L[Audit trail / security visibility]
+```
+
 ## Quick Example
 
 ```ts
