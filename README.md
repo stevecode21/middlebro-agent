@@ -35,7 +35,50 @@ MIDDLEBRO_ENABLED=true
 MIDDLEBRO_URL=http://127.0.0.1:4141/v1
 ```
 
+## Minimal SDK Integration (Recommended)
+
+This is the shortest integration path: initialize `Middlebro`, guard each inbound string, and handle blocked errors through `Middlebro` helpers.
+
+```ts
+import OpenAI from 'openai';
+import { Middlebro } from 'middlebro';
+
+const mb = new Middlebro({ mode: 'enforce' });
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: process.env.MIDDLEBRO_URL,
+});
+
+async function askUser(userInput: string): Promise<string> {
+  try {
+    mb.guard(userInput, { from: 'user_message' });
+
+    const res = await client.chat.completions.create({
+      model: 'gpt-oss:20b',
+      messages: [{ role: 'user', content: userInput }],
+    });
+
+    return res.choices[0]?.message?.content ?? '';
+  } catch (err: unknown) {
+    if (mb.isBlockedError(err)) {
+      const blocked = mb.formatBlockedError(err, { useColor: true });
+      if (!blocked) return 'Request blocked by policy.';
+      console.error(blocked.title);
+      console.error(blocked.body);
+      return 'Request blocked by policy.';
+    }
+    throw err;
+  }
+}
+
+// Optional at shutdown: collect threat/intervention summary
+const report = mb.close();
+console.log(report);
+```
+
 ### OpenAI Adapter Example
+
+Use this when you want adapter helpers for bulk message arrays and tool outputs.
 
 ```ts
 import OpenAI from 'openai';
