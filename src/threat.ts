@@ -28,7 +28,9 @@ function correlate(
   for (const obs of incoming) {
     for (const signal of obs.signals) {
       const existing_threat = existing.find(
-        (t) => t.type === signal.type && t.status === 'active',
+        (t) =>
+          t.type === signal.type &&
+          (t.status === 'active' || t.status === 'escalated'),
       );
       if (existing_threat) {
         existing_threat.observations.push(obs);

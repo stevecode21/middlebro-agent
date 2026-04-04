@@ -98,6 +98,12 @@ Run evaluation suite:
 npm run flow:evals
 ```
 
+Run package-integration demo (simulates another agent using the SDK):
+
+```bash
+npm run flow:package-demo
+```
+
 This flow keeps `MIDDLEBRO_ENABLED=true` and routes through:
 
 - Middlebro proxy: `http://127.0.0.1:4141/v1`
