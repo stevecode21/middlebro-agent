@@ -1,0 +1,45 @@
+{
+  "name": "middlebro",
+  "version": "0.1.0",
+  "description": "A session-scoped security organism for AI agents. Detects and blocks prompt injection, context poisoning, and indirect injection before they reach the model.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./adapters/langchain": {
+      "import": "./dist/adapters/langchain.js",
+      "types": "./dist/adapters/langchain.d.ts"
+    },
+    "./adapters/openai": {
+      "import": "./dist/adapters/openai.js",
+      "types": "./dist/adapters/openai.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "evals": "npx tsx evals/run.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.2",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "ai-security",
+    "prompt-injection",
+    "agent-security",
+    "llm",
+    "context-poisoning",
+    "jailbreak"
+  ],
+  "license": "MIT"
+}
