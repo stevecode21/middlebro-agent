@@ -137,6 +137,76 @@ export interface SessionReport {
   interventions: Intervention[];
 }
 
+// ─── OpenAI Wire Format (subset we care about) ───────────────────────────────
+
+export interface OpenAIMessage {
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string | null;
+  tool_calls?: Array<{ id: string; function: { name: string; arguments: string } }>;
+  tool_call_id?: string;
+  name?: string;
+}
+
+export interface OpenAIChatRequest {
+  model: string;
+  messages: OpenAIMessage[];
+  stream?: boolean;
+  tools?: unknown[];
+  [key: string]: unknown;
+}
+
+// ─── Event Bus ────────────────────────────────────────────────────────────────
+
+export type BusEventType =
+  | 'llm:request'       // agent → LLM (intercepted before forwarding)
+  | 'llm:response'      // LLM → agent (intercepted before returning)
+  | 'tool:call'         // agent about to execute a tool
+  | 'tool:result'       // tool result about to enter context
+  | 'threat:detected'
+  | 'intervention:executed'
+  | 'session:start'
+  | 'session:end';
+
+export interface BusEvent<T = unknown> {
+  id: string;
+  type: BusEventType;
+  sessionId: string;
+  timestamp: number;
+  payload: T;
+}
+
+// ─── Reasoner ─────────────────────────────────────────────────────────────────
+
+export interface ReasonerVerdict {
+  threat: boolean;
+  confidence: number;           // 0–1
+  action: InterventionType;
+  reasoning: string;            // human-readable explanation
+  threatType?: ThreatType;
+}
+
+export interface ReasonerInput {
+  eventType: BusEventType;
+  content: string;
+  signals: Signal[];
+  sessionSummary: string;       // last N observations as text
+}
+
+// ─── Proxy ────────────────────────────────────────────────────────────────────
+
+export interface ProxyConfig {
+  port?: number;
+  targetUrl?: string;           // default: https://api.openai.com
+}
+
+export interface InterceptResult {
+  blocked: boolean;
+  sanitized: boolean;
+  body: string;                 // original or sanitized JSON
+  intervention?: Intervention;
+  verdict?: ReasonerVerdict;
+}
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 export interface PolicyConfig {

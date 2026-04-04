@@ -19,11 +19,15 @@
       "types": "./dist/adapters/openai.d.ts"
     }
   },
+  "bin": {
+    "middlebro": "./bin/middlebro.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
-    "evals": "npx tsx evals/run.ts"
+    "start": "tsx src/cli/index.ts start",
+    "evals": "tsx evals/run.ts"
   },
   "devDependencies": {
     "@types/node": "^25.5.2",
@@ -41,5 +45,8 @@
     "context-poisoning",
     "jailbreak"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "openai": "^6.33.0"
+  }
 }
