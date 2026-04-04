@@ -1,5 +1,11 @@
 import { randomUUID } from 'crypto';
-import type { WatcherStrategy, Gate, ObservationContext, Observation, Signal } from '../types.js';
+import type {
+  WatcherStrategy,
+  Gate,
+  ObservationContext,
+  Observation,
+  Signal,
+} from '../types.js';
 
 // Dangerous argument patterns for common agent tools.
 // Each entry targets a specific tool by name and checks its args.
@@ -13,20 +19,80 @@ interface ToolRule {
 
 const TOOL_RULES: ToolRule[] = [
   // Shell / exec tools
-  { tool: /exec|shell|bash|run_command|terminal/i, argKey: 'command', pattern: /rm\s+(-[rf]+\s+)*[\/~]/, confidence: 0.95, label: 'recursive force delete' },
-  { tool: /exec|shell|bash|run_command|terminal/i, argKey: 'command', pattern: /curl\s+[^|]*\|\s*(ba)?sh/, confidence: 0.95, label: 'curl pipe to shell' },
-  { tool: /exec|shell|bash|run_command|terminal/i, argKey: 'command', pattern: /:\(\)\s*\{.*\}\s*;?\s*:/, confidence: 1.0, label: 'fork bomb' },
-  { tool: /exec|shell|bash|run_command|terminal/i, argKey: 'command', pattern: /\bsudo\b/, confidence: 0.8, label: 'privilege escalation' },
-  { tool: /exec|shell|bash|run_command|terminal/i, argKey: 'command', pattern: /\/etc\/shadow/, confidence: 0.95, label: 'shadow file access' },
-  { tool: /exec|shell|bash|run_command|terminal/i, argKey: 'command', pattern: /~\/\.ssh\//, confidence: 0.9, label: 'SSH key access' },
-  { tool: /exec|shell|bash|run_command|terminal/i, argKey: 'command', pattern: /~\/\.aws\//, confidence: 0.9, label: 'AWS credential access' },
+  {
+    tool: /exec|shell|bash|run_command|terminal/i,
+    argKey: 'command',
+    pattern: /rm\s+(-[rf]+\s+)*[/~]/,
+    confidence: 0.95,
+    label: 'recursive force delete',
+  },
+  {
+    tool: /exec|shell|bash|run_command|terminal/i,
+    argKey: 'command',
+    pattern: /curl\s+[^|]*\|\s*(ba)?sh/,
+    confidence: 0.95,
+    label: 'curl pipe to shell',
+  },
+  {
+    tool: /exec|shell|bash|run_command|terminal/i,
+    argKey: 'command',
+    pattern: /:\(\)\s*\{.*\}\s*;?\s*:/,
+    confidence: 1.0,
+    label: 'fork bomb',
+  },
+  {
+    tool: /exec|shell|bash|run_command|terminal/i,
+    argKey: 'command',
+    pattern: /\bsudo\b/,
+    confidence: 0.8,
+    label: 'privilege escalation',
+  },
+  {
+    tool: /exec|shell|bash|run_command|terminal/i,
+    argKey: 'command',
+    pattern: /\/etc\/shadow/,
+    confidence: 0.95,
+    label: 'shadow file access',
+  },
+  {
+    tool: /exec|shell|bash|run_command|terminal/i,
+    argKey: 'command',
+    pattern: /~\/\.ssh\//,
+    confidence: 0.9,
+    label: 'SSH key access',
+  },
+  {
+    tool: /exec|shell|bash|run_command|terminal/i,
+    argKey: 'command',
+    pattern: /~\/\.aws\//,
+    confidence: 0.9,
+    label: 'AWS credential access',
+  },
 
   // File tools
-  { tool: /write_file|file_write|create_file/i, argKey: 'path', pattern: /\/etc\/|\/usr\/|\/bin\/|\/sbin\//, confidence: 0.85, label: 'write to system directory' },
-  { tool: /read_file|file_read/i, argKey: 'path', pattern: /~\/\.ssh\/|~\/\.aws\/|\.env$/, confidence: 0.9, label: 'credential file read' },
+  {
+    tool: /write_file|file_write|create_file/i,
+    argKey: 'path',
+    pattern: /\/etc\/|\/usr\/|\/bin\/|\/sbin\//,
+    confidence: 0.85,
+    label: 'write to system directory',
+  },
+  {
+    tool: /read_file|file_read/i,
+    argKey: 'path',
+    pattern: /~\/\.ssh\/|~\/\.aws\/|\.env$/,
+    confidence: 0.9,
+    label: 'credential file read',
+  },
 
   // Browser / HTTP tools
-  { tool: /browser|fetch|http_request|web_request/i, argKey: 'url', pattern: /(?:pastebin|hastebin|0x0\.st|transfer\.sh)/, confidence: 0.8, label: 'paste service exfil' },
+  {
+    tool: /browser|fetch|http_request|web_request/i,
+    argKey: 'url',
+    pattern: /(?:pastebin|hastebin|0x0\.st|transfer\.sh)/,
+    confidence: 0.8,
+    label: 'paste service exfil',
+  },
 ];
 
 export class ToolWatcher implements WatcherStrategy {

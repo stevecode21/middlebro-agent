@@ -1,20 +1,48 @@
 import { randomUUID } from 'crypto';
-import type { WatcherStrategy, Gate, ObservationContext, Observation, Signal } from '../types.js';
+import type {
+  WatcherStrategy,
+  Gate,
+  ObservationContext,
+  Observation,
+  Signal,
+} from '../types.js';
 
 // Zero-width and invisible characters used to hide instructions from human reviewers
-const ZERO_WIDTH = /[\u200B\u200C\u200D\u2060\uFEFF\u00AD]/;
+function hasZeroWidthChars(text: string): boolean {
+  const codepoints = new Set([0x200b, 0x200c, 0x200d, 0x2060, 0xfeff, 0x00ad]);
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp !== undefined && codepoints.has(cp)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 // Bidirectional override characters — used to visually flip text direction
-const BIDI = /[\u202A-\u202E\u2066-\u2069\u200F\u200E]/;
+function hasBidiChars(text: string): boolean {
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp === undefined) continue;
+    const inRloRange = cp >= 0x202a && cp <= 0x202e;
+    const inIsolateRange = cp >= 0x2066 && cp <= 0x2069;
+    if (inRloRange || inIsolateRange || cp === 0x200f || cp === 0x200e) {
+      return true;
+    }
+  }
+  return false;
+}
 
 // Unicode tag block — sometimes abused to encode hidden payloads
-const TAG_CHARS = /[\uE0001-\uE007F]/;
-
-// Cyrillic/Greek homoglyphs that look identical to Latin letters
-const HOMOGLYPH_MAP: Array<[RegExp, string]> = [
-  [/[\u0430\u0435\u043E\u0440\u0441\u0445\u0440]/g, 'a/e/o/p/c/x/p'], // Cyrillic
-  [/[\u03B1\u03B2\u03B5]/g, 'α/β/ε'],                                   // Greek
-];
+function hasUnicodeTagChars(text: string): boolean {
+  for (const ch of text) {
+    const cp = ch.codePointAt(0);
+    if (cp !== undefined && cp >= 0xe0001 && cp <= 0xe007f) {
+      return true;
+    }
+  }
+  return false;
+}
 
 // Detects if a string mixes Latin with Cyrillic or Greek (common in homoglyph attacks)
 function hasMixedScripts(text: string): boolean {
@@ -38,24 +66,44 @@ export class ObfuscationWatcher implements WatcherStrategy {
   observe(content: string, ctx: ObservationContext): Observation | null {
     const signals: Signal[] = [];
 
-    if (ZERO_WIDTH.test(content)) {
-      signals.push({ type: 'obfuscation', confidence: 0.9, evidence: 'zero-width characters detected' });
+    if (hasZeroWidthChars(content)) {
+      signals.push({
+        type: 'obfuscation',
+        confidence: 0.9,
+        evidence: 'zero-width characters detected',
+      });
     }
 
-    if (BIDI.test(content)) {
-      signals.push({ type: 'obfuscation', confidence: 0.95, evidence: 'bidirectional override characters detected' });
+    if (hasBidiChars(content)) {
+      signals.push({
+        type: 'obfuscation',
+        confidence: 0.95,
+        evidence: 'bidirectional override characters detected',
+      });
     }
 
-    if (TAG_CHARS.test(content)) {
-      signals.push({ type: 'obfuscation', confidence: 0.9, evidence: 'Unicode tag characters detected' });
+    if (hasUnicodeTagChars(content)) {
+      signals.push({
+        type: 'obfuscation',
+        confidence: 0.9,
+        evidence: 'Unicode tag characters detected',
+      });
     }
 
     if (hasMixedScripts(content)) {
-      signals.push({ type: 'obfuscation', confidence: 0.8, evidence: 'mixed scripts (Latin + Cyrillic/Greek)' });
+      signals.push({
+        type: 'obfuscation',
+        confidence: 0.8,
+        evidence: 'mixed scripts (Latin + Cyrillic/Greek)',
+      });
     }
 
     if (hasEncodedPayload(content)) {
-      signals.push({ type: 'obfuscation', confidence: 0.65, evidence: 'dense base64-like encoding' });
+      signals.push({
+        type: 'obfuscation',
+        confidence: 0.65,
+        evidence: 'dense base64-like encoding',
+      });
     }
 
     if (signals.length === 0) return null;

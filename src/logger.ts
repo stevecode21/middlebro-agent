@@ -1,7 +1,10 @@
 import { appendFileSync } from 'fs';
-import type { Observation, Intervention, SessionReport, Severity, LoggerConfig } from './types.js';
-
-const SEVERITY_ORDER: Severity[] = ['info', 'low', 'medium', 'high', 'critical'];
+import type {
+  Observation,
+  Intervention,
+  SessionReport,
+  LoggerConfig,
+} from './types.js';
 
 interface LogEvent {
   type: 'observation' | 'intervention' | 'session_end' | 'threat_level_change';
@@ -18,24 +21,43 @@ export class SecurityLogger {
   }
 
   observation(sessionId: string, obs: Observation): void {
-    const minSev = this.config.minSeverity ?? 'low';
-    const topConfidence = Math.max(...obs.signals.map(s => s.confidence), 0);
+    const topConfidence = Math.max(...obs.signals.map((s) => s.confidence), 0);
     if (topConfidence < 0.5) return; // skip low-confidence noise
 
-    this.emit({ type: 'observation', sessionId, timestamp: new Date().toISOString(), data: obs });
+    this.emit({
+      type: 'observation',
+      sessionId,
+      timestamp: new Date().toISOString(),
+      data: obs,
+    });
   }
 
   intervention(sessionId: string, intervention: Intervention): void {
     if (intervention.type === 'pass') return;
-    this.emit({ type: 'intervention', sessionId, timestamp: new Date().toISOString(), data: intervention });
+    this.emit({
+      type: 'intervention',
+      sessionId,
+      timestamp: new Date().toISOString(),
+      data: intervention,
+    });
   }
 
   sessionEnd(report: SessionReport): void {
-    this.emit({ type: 'session_end', sessionId: report.sessionId, timestamp: new Date().toISOString(), data: report });
+    this.emit({
+      type: 'session_end',
+      sessionId: report.sessionId,
+      timestamp: new Date().toISOString(),
+      data: report,
+    });
   }
 
   threatLevelChange(sessionId: string, level: string): void {
-    this.emit({ type: 'threat_level_change', sessionId, timestamp: new Date().toISOString(), data: { level } });
+    this.emit({
+      type: 'threat_level_change',
+      sessionId,
+      timestamp: new Date().toISOString(),
+      data: { level },
+    });
   }
 
   private emit(event: LogEvent): void {

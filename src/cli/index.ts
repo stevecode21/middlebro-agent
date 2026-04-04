@@ -11,7 +11,7 @@ function parseArgs(argv: string[]): Record<string, string> {
     if (arg?.startsWith('--')) {
       const key = arg.slice(2);
       const next = argv[i + 1];
-      args[key] = (next && !next.startsWith('--')) ? (i++, next) : 'true';
+      args[key] = next && !next.startsWith('--') ? (i++, next) : 'true';
     }
   }
   return args;
@@ -25,12 +25,24 @@ function print(line: string): void {
 
 function printBanner(): void {
   print('');
-  print('  ███╗   ███╗██╗██████╗ ██████╗ ██╗     ███████╗██████╗ ██████╗  ██████╗ ');
-  print('  ████╗ ████║██║██╔══██╗██╔══██╗██║     ██╔════╝██╔══██╗██╔══██╗██╔═══██╗');
-  print('  ██╔████╔██║██║██║  ██║██║  ██║██║     █████╗  ██████╔╝██████╔╝██║   ██║');
-  print('  ██║╚██╔╝██║██║██║  ██║██║  ██║██║     ██╔══╝  ██╔══██╗██╔══██╗██║   ██║');
-  print('  ██║ ╚═╝ ██║██║██████╔╝██████╔╝███████╗███████╗██████╔╝██║  ██║╚██████╔╝');
-  print('  ╚═╝     ╚═╝╚═╝╚═════╝ ╚═════╝ ╚══════╝╚══════╝╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ');
+  print(
+    '  ███╗   ███╗██╗██████╗ ██████╗ ██╗     ███████╗██████╗ ██████╗  ██████╗ ',
+  );
+  print(
+    '  ████╗ ████║██║██╔══██╗██╔══██╗██║     ██╔════╝██╔══██╗██╔══██╗██╔═══██╗',
+  );
+  print(
+    '  ██╔████╔██║██║██║  ██║██║  ██║██║     █████╗  ██████╔╝██████╔╝██║   ██║',
+  );
+  print(
+    '  ██║╚██╔╝██║██║██║  ██║██║  ██║██║     ██╔══╝  ██╔══██╗██╔══██╗██║   ██║',
+  );
+  print(
+    '  ██║ ╚═╝ ██║██║██████╔╝██████╔╝███████╗███████╗██████╔╝██║  ██║╚██████╔╝',
+  );
+  print(
+    '  ╚═╝     ╚═╝╚═╝╚═════╝ ╚═════╝ ╚══════╝╚══════╝╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ',
+  );
   print('');
   print('  autonomous security agent  —  v0.1.0');
   print('');
@@ -39,19 +51,31 @@ function printBanner(): void {
 // ─── Commands ────────────────────────────────────────────────────────────────���
 
 function commandStart(args: Record<string, string>): void {
-  const port   = parseInt(args['port'] ?? '4141', 10);
-  const mode   = (args['mode'] ?? 'enforce') as EnforcementMode;
-  const target = args['target'] ?? process.env['OPENAI_API_URL'] ?? 'https://api.openai.com';
-
-  if (!process.env['OPENAI_API_KEY'] && !args['key']) {
-    print('❌  OPENAI_API_KEY is not set. Middlebro needs it to power the reasoner.');
-    print('   export OPENAI_API_KEY=sk-...');
-    print('   or pass --key sk-...');
-    process.exit(1);
-  }
+  const port = parseInt(args['port'] ?? '4141', 10);
+  const mode = (args['mode'] ?? 'enforce') as EnforcementMode;
+  const target =
+    args['target'] ?? process.env['OPENAI_API_URL'] ?? 'https://api.openai.com';
 
   if (args['key']) {
     process.env['OPENAI_API_KEY'] = args['key'];
+  }
+
+  // Keep the reasoner endpoint aligned with the upstream target by default.
+  if (!process.env['OPENAI_API_URL']) {
+    process.env['OPENAI_API_URL'] = target;
+  }
+
+  if (args['reasoner-provider']) {
+    process.env['MIDDLEBRO_PROVIDER'] = args['reasoner-provider'];
+  }
+  if (args['reasoner-model']) {
+    process.env['MIDDLEBRO_MODEL'] = args['reasoner-model'];
+  }
+  if (args['reasoner-base-url']) {
+    process.env['MIDDLEBRO_BASE_URL'] = args['reasoner-base-url'];
+  }
+  if (args['reasoner-key']) {
+    process.env['MIDDLEBRO_API_KEY'] = args['reasoner-key'];
   }
 
   printBanner();
@@ -80,7 +104,11 @@ function commandHelp(): void {
   print('    --port    Proxy port (default: 4141)');
   print('    --mode    enforce | monitor | warn  (default: enforce)');
   print('    --target  LLM provider URL (default: https://api.openai.com)');
-  print('    --key     OpenAI API key (or set OPENAI_API_KEY env var)');
+  print('    --key     OpenAI API key for upstream (or set OPENAI_API_KEY)');
+  print('    --reasoner-provider  openai | anthropic | groq');
+  print('    --reasoner-model     Override reasoner model (ex: gpt-oss-20b)');
+  print('    --reasoner-base-url  Override reasoner API base URL');
+  print('    --reasoner-key       Override reasoner API key');
   print('');
   print('  Example:');
   print('    middlebro start --mode enforce --port 4141');
@@ -97,8 +125,12 @@ const command = argv[0] ?? 'help';
 const args = parseArgs(argv.slice(1));
 
 switch (command) {
-  case 'start': commandStart(args);  break;
-  case 'help':  commandHelp();       break;
+  case 'start':
+    commandStart(args);
+    break;
+  case 'help':
+    commandHelp();
+    break;
   default:
     print(`❌  Unknown command: ${command}`);
     commandHelp();

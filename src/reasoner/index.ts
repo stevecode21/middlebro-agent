@@ -1,82 +1,62 @@
-import OpenAI from 'openai';
 import { SYSTEM_PROMPT } from './prompt.js';
-import type { ReasonerInput, ReasonerVerdict, InterventionType, ThreatType } from '../types.js';
+import {
+  parseProviderOutput,
+  createProvider,
+  type LLMProvider,
+  type ProviderFactoryOptions,
+} from './provider.js';
+import type { ReasonerInput, ReasonerVerdict } from '../types.js';
 
 // Confidence threshold below which we skip the LLM call and pass directly.
 // Keeps costs/latency low for clean traffic.
 const REASONER_THRESHOLD = 0.6;
 
-const VALID_ACTIONS = new Set<InterventionType>([
-  'pass', 'sanitize', 'alert', 'block', 'terminate', 'quarantine', 'redirect',
-]);
-
-const VALID_THREAT_TYPES = new Set<ThreatType>([
-  'prompt_injection', 'indirect_injection', 'context_poisoning',
-  'memory_poison', 'jailbreak', 'obfuscation',
-]);
-
-function parseVerdict(raw: string): ReasonerVerdict {
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    // Malformed JSON from model — default to alert so a human reviews
-    return { threat: false, confidence: 0, action: 'alert', reasoning: 'Reasoner returned unparseable output.' };
-  }
-
-  const action = VALID_ACTIONS.has(parsed['action'] as InterventionType)
-    ? (parsed['action'] as InterventionType)
-    : 'alert';
-
-  const threatType = VALID_THREAT_TYPES.has(parsed['threatType'] as ThreatType)
-    ? (parsed['threatType'] as ThreatType)
-    : undefined;
-
-  return {
-    threat:     Boolean(parsed['threat']),
-    confidence: typeof parsed['confidence'] === 'number' ? parsed['confidence'] : 0,
-    action,
-    reasoning:  typeof parsed['reasoning'] === 'string' ? parsed['reasoning'] : '',
-    ...(threatType ? { threatType } : {}),
-  };
+export interface ReasonerOptions extends ProviderFactoryOptions {
+  /** Inject a custom provider directly (for testing or advanced config) */
+  customProvider?: LLMProvider;
 }
 
 export class Reasoner {
-  private client: OpenAI;
-  private model: string;
+  private provider: LLMProvider;
 
-  constructor(apiKey?: string, model = 'gpt-4o-mini') {
-    this.client = new OpenAI({ apiKey: apiKey ?? process.env['OPENAI_API_KEY'] });
-    this.model = model;
+  constructor(opts: ReasonerOptions = {}) {
+    this.provider = opts.customProvider ?? createProvider(opts);
+  }
+
+  get providerName(): string {
+    return this.provider.name;
   }
 
   // Returns null if watcher confidence is below threshold (skip LLM call).
   async analyze(input: ReasonerInput): Promise<ReasonerVerdict | null> {
-    const maxConfidence = Math.max(...input.signals.map(s => s.confidence), 0);
+    const maxConfidence = Math.max(
+      ...input.signals.map((s) => s.confidence),
+      0,
+    );
 
     if (maxConfidence < REASONER_THRESHOLD) {
       return null; // nothing suspicious enough to spend an LLM call on
     }
 
     const userMessage = this.buildPrompt(input);
+    const raw = await this.provider.complete(SYSTEM_PROMPT, userMessage);
+    const verdict = parseProviderOutput(raw);
 
-    const response = await this.client.chat.completions.create({
-      model:           this.model,
-      temperature:     0,
-      response_format: { type: 'json_object' },
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user',   content: userMessage },
-      ],
-    });
-
-    const content = response.choices[0]?.message?.content ?? '{}';
-    return parseVerdict(content);
+    return {
+      threat: verdict.threat,
+      confidence: verdict.confidence,
+      action: verdict.action,
+      reasoning: verdict.reasoning,
+      ...(verdict.threatType ? { threatType: verdict.threatType } : {}),
+    };
   }
 
   private buildPrompt(input: ReasonerInput): string {
     const signalLines = input.signals
-      .map(s => `  - [${s.type}] confidence=${s.confidence.toFixed(2)}  evidence="${s.evidence}"`)
+      .map(
+        (s) =>
+          `  - [${s.type}] confidence=${s.confidence.toFixed(2)}  evidence="${s.evidence}"`,
+      )
       .join('\n');
 
     return `

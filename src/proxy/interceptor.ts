@@ -11,10 +11,14 @@ import type { Reasoner } from '../reasoner/index.js';
 // Maps OpenAI message roles to Middlebro source contexts
 function roleToSource(role: OpenAIMessage['role']): SourceContext {
   switch (role) {
-    case 'user':      return 'user_message';
-    case 'system':    return 'system_prompt';
-    case 'tool':      return 'tool_output';
-    case 'assistant': return 'inter_agent';
+    case 'user':
+      return 'user_message';
+    case 'system':
+      return 'system_prompt';
+    case 'tool':
+      return 'tool_output';
+    case 'assistant':
+      return 'inter_agent';
   }
 }
 
@@ -37,10 +41,14 @@ function buildSessionSummary(session: MiddlebroSession): string {
   const recent = session.state.timeline.slice(-8);
   if (recent.length === 0) return '';
 
-  return recent.map(obs => {
-    const signals = obs.signals.map(s => `${s.type}(${s.confidence.toFixed(2)})`).join(', ');
-    return `[turn ${obs.turn}] gate=${obs.gate} source=${obs.source} signals=[${signals || 'none'}]`;
-  }).join('\n');
+  return recent
+    .map((obs) => {
+      const signals = obs.signals
+        .map((s) => `${s.type}(${s.confidence.toFixed(2)})`)
+        .join(', ');
+      return `[turn ${obs.turn}] gate=${obs.gate} source=${obs.source} signals=[${signals || 'none'}]`;
+    })
+    .join('\n');
 }
 
 export class Interceptor {
@@ -52,7 +60,7 @@ export class Interceptor {
 
   async checkRequest(
     raw: string,
-    session: MiddlebroSession
+    session: MiddlebroSession,
   ): Promise<InterceptResult> {
     let req: OpenAIChatRequest;
     try {
@@ -68,7 +76,6 @@ export class Interceptor {
     // Inspect the most recent messages (last 3 — oldest are already trusted context)
     const toInspect = req.messages.slice(-3);
     const allSignals: Signal[] = [];
-    let blocked = false;
     let sanitized = false;
     const sanitizedMessages = [...req.messages];
 
@@ -95,7 +102,6 @@ export class Interceptor {
 
         if (verdict) {
           if (verdict.action === 'block' || verdict.action === 'terminate') {
-            blocked = true;
             return {
               blocked: true,
               sanitized: false,
@@ -110,8 +116,9 @@ export class Interceptor {
             const idx = sanitizedMessages.indexOf(msg);
             if (idx !== -1) {
               const redacted: OpenAIMessage = {
-                role:    msg.role,
-                content: '[content redacted by Middlebro — security threat detected]',
+                role: msg.role,
+                content:
+                  '[content redacted by Middlebro — security threat detected]',
               };
               sanitizedMessages[idx] = redacted;
               sanitized = true;
@@ -130,6 +137,6 @@ export class Interceptor {
       };
     }
 
-    return { blocked, sanitized, body: raw };
+    return { blocked: false, sanitized, body: raw };
   }
 }

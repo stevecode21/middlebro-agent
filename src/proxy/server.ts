@@ -1,8 +1,9 @@
 import http from 'http';
 import { Middlebro } from '../index.js';
 import { Interceptor } from './interceptor.js';
+import { ResponseInterceptor } from './response-interceptor.js';
 import { Reasoner } from '../reasoner/index.js';
-import { forward, sendBlocked } from './forwarder.js';
+import { forward, forwardAndCapture, sendBlocked } from './forwarder.js';
 import { bus } from '../bus/index.js';
 import type { ProxyConfig, EnforcementMode } from '../types.js';
 import type { MiddlebroSession } from '../session.js';
@@ -24,9 +25,6 @@ function getOrCreateSession(
 
   const session = mb.session();
 
-  // Wire session events to the live feed
-  session.state; // touch to initialise
-
   bus.on('threat:detected', (event) => {
     if (event.sessionId === session.id) {
       onEvent(`  ⚡  threat detected  session=${session.id.slice(0, 8)}`);
@@ -35,6 +33,10 @@ function getOrCreateSession(
 
   onEvent(`🟢 new session  ${session.id.slice(0, 8)}  client=${clientKey}`);
   sessions.set(clientKey, session);
+
+  // Emit session:start on the bus so plugins / dashboards can subscribe
+  bus.emit('session:start', session.id, { clientKey });
+
   return session;
 }
 
@@ -66,26 +68,31 @@ export function createProxyServer(opts: {
     },
   });
 
-  const reasoner    = new Reasoner();
-  const interceptor = new Interceptor(reasoner);
+  const reasoner             = new Reasoner();
+  const requestInterceptor   = new Interceptor(reasoner);
+  const responseInterceptor  = new ResponseInterceptor(reasoner);
 
   const server = http.createServer(async (req, res) => {
     const clientKey = `${req.socket.remoteAddress}:${req.socket.remotePort}`;
     const session   = getOrCreateSession(clientKey, mb, opts.onEvent);
     const path      = req.url ?? '/';
 
-    // Health check
+    // ── Health check ──────────────────────────────────────────────────────────
     if (req.method === 'GET' && path === '/healthz') {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', sessions: sessions.size }));
+      res.end(JSON.stringify({
+        status:   'ok',
+        sessions: sessions.size,
+        provider: reasoner.providerName,
+        mode:     opts.mode,
+      }));
       return;
     }
 
-    // Only intercept LLM call endpoints
+    // ── Non-LLM endpoints (embeddings, model list, etc.) — pass straight through
     const isLLMEndpoint = path.includes('/chat/completions') || path.includes('/completions');
 
     if (req.method !== 'POST' || !isLLMEndpoint) {
-      // Non-LLM endpoints (embeddings, models list, etc.) — pass straight through
       const body = await bufferBody(req);
       forward(req, body, res, targetUrl);
       return;
@@ -93,35 +100,81 @@ export function createProxyServer(opts: {
 
     const ts   = new Date().toISOString().slice(11, 23);
     const body = await bufferBody(req);
+    const turn = session.state.turnCount + 1;
 
-    opts.onEvent(`[${ts}] 👁  intercepted  llm:request  session=${session.id.slice(0, 8)}`);
+    opts.onEvent(`[${ts}] 👁  turn ${turn}  intercepted  llm:request  session=${session.id.slice(0, 8)}`);
 
-    let result;
+    // Emit to bus so the event log / dashboard can track it
+    bus.emit('llm:request', session.id, { turn, preview: body.slice(0, 120) });
+
+    // ── Request interception ──────────────────────────────────────────────────
+    let reqResult;
     try {
-      result = await interceptor.checkRequest(body, session);
+      reqResult = await requestInterceptor.checkRequest(body, session);
     } catch (err) {
-      // Reasoner or watcher error — fail open (log, pass through) to avoid breaking the agent
       opts.onEvent(`  ⚠️  interceptor error: ${(err as Error).message} — passing through`);
       forward(req, body, res, targetUrl);
       return;
     }
 
-    if (result.blocked) {
-      const reason = result.verdict?.reasoning ?? 'security threat detected';
-      opts.onEvent(`  🚨 BLOCKED  — ${reason}`);
+    if (reqResult.blocked) {
+      const reason = reqResult.verdict?.reasoning ?? 'security threat detected';
+      opts.onEvent(`  🚨 BLOCKED request  — ${reason}`);
+      bus.emit('intervention:executed', session.id, { action: 'block', reason, plane: 'request' });
       sendBlocked(res, reason);
       return;
     }
 
-    if (result.sanitized) {
+    if (reqResult.sanitized) {
       opts.onEvent(`  ✂️  sanitized request  — forwarding clean content`);
     }
 
-    if (result.verdict) {
-      opts.onEvent(`  🧠  reasoner: ${result.verdict.action}  (${(result.verdict.confidence * 100).toFixed(0)}%)  — ${result.verdict.reasoning}`);
+    if (reqResult.verdict) {
+      const v = reqResult.verdict;
+      opts.onEvent(`  🧠  reasoner [req]: ${v.action}  (${(v.confidence * 100).toFixed(0)}%)  — ${v.reasoning}`);
+      bus.emit('threat:detected', session.id, { verdict: v, plane: 'request' });
+    } else {
+      opts.onEvent(`  ✅  watchers: no signals  → pass`);
     }
 
-    forward(req, result.body, res, targetUrl);
+    // ── Forward to upstream & capture response ────────────────────────────────
+    let upstreamBody: string;
+    try {
+      upstreamBody = await forwardAndCapture(req, reqResult.body, res, targetUrl);
+    } catch {
+      // forwardAndCapture already sent the error response to the client
+      return;
+    }
+
+    // ── Response interception ─────────────────────────────────────────────────
+    // Skip response scan for streaming (SSE) — we already sent it through
+    const isStreaming = body.includes('"stream":true') || body.includes('"stream": true');
+    if (isStreaming || !upstreamBody) return;
+
+    bus.emit('llm:response', session.id, { turn, preview: upstreamBody.slice(0, 120) });
+
+    let resResult;
+    try {
+      resResult = await responseInterceptor.checkResponse(upstreamBody, session);
+    } catch (err) {
+      opts.onEvent(`  ⚠️  response interceptor error: ${(err as Error).message}`);
+      return;
+    }
+
+    if (resResult.blocked) {
+      const reason = resResult.verdict?.reasoning ?? 'security threat in LLM response';
+      opts.onEvent(`  🚨 BLOCKED response  — ${reason}`);
+      bus.emit('intervention:executed', session.id, { action: 'block', reason, plane: 'response' });
+      // Note: we already forwarded the response; in a full impl this would require
+      // buffering before sending. Log it for now so the operator is alerted.
+      opts.onEvent(`  ⚠️  [response-block] response was already sent — session flagged`);
+    } else if (resResult.sanitized) {
+      opts.onEvent(`  ✂️  sanitized response  — threat stripped from LLM output`);
+      bus.emit('intervention:executed', session.id, { action: 'sanitize', plane: 'response' });
+    } else if (resResult.verdict) {
+      const v = resResult.verdict;
+      opts.onEvent(`  🧠  reasoner [res]: ${v.action}  (${(v.confidence * 100).toFixed(0)}%)  — ${v.reasoning}`);
+    }
   });
 
   server.on('error', (err) => {
@@ -131,10 +184,11 @@ export function createProxyServer(opts: {
   server.listen(port, '127.0.0.1', () => {
     opts.onEvent(`🛡  Middlebro listening on http://127.0.0.1:${port}`);
     opts.onEvent(`   forwarding to ${targetUrl}`);
-    opts.onEvent(`   mode: ${opts.mode}`);
+    opts.onEvent(`   mode: ${opts.mode}  |  reasoner: ${reasoner.providerName}`);
     opts.onEvent('');
     opts.onEvent('   Set your agent\'s base URL:');
     opts.onEvent(`   OPENAI_BASE_URL=http://127.0.0.1:${port}`);
+    opts.onEvent(`   ANTHROPIC_BASE_URL=http://127.0.0.1:${port}`);
     opts.onEvent('');
   });
 

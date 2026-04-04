@@ -26,13 +26,25 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "start": "tsx src/cli/index.ts start",
-    "evals": "tsx evals/run.ts"
+    "demo": "tsx examples/demo.ts",
+    "evals": "tsx evals/run.ts",
+    "evals:watcher": "tsx evals/run.ts --no-reasoner",
+    "evals:fp": "tsx evals/run.ts --suite false-positives",
+    "flow:start": "MIDDLEBRO_ENABLED=true MIDDLEBRO_URL=http://127.0.0.1:4141/v1 OPENAI_API_URL=http://127.0.0.1:11434/v1 OPENAI_API_KEY=ollama npm run start -- --mode monitor --port 4141 --target http://127.0.0.1:11434/v1 --reasoner-provider openai --reasoner-model gpt-oss:20b --reasoner-base-url http://127.0.0.1:11434/v1 --reasoner-key ollama",
+    "flow:demo": "MIDDLEBRO_ENABLED=true MIDDLEBRO_URL=http://127.0.0.1:4141/v1 MIDDLEBRO_DEMO_MODEL=gpt-oss:20b OPENAI_API_KEY=ollama npm run demo",
+    "flow:evals": "MIDDLEBRO_ENABLED=true MIDDLEBRO_URL=http://127.0.0.1:4141/v1 MIDDLEBRO_PROVIDER=openai MIDDLEBRO_MODEL=gpt-oss:20b MIDDLEBRO_BASE_URL=http://127.0.0.1:11434/v1 MIDDLEBRO_API_KEY=ollama OPENAI_API_URL=http://127.0.0.1:11434/v1 OPENAI_API_KEY=ollama npm run evals"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^25.5.2",
+    "eslint": "^10.2.0",
+    "globals": "^17.4.0",
     "tsx": "^4.7.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.58.0"
   },
   "engines": {
     "node": ">=18"
