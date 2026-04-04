@@ -6,7 +6,12 @@ import { MemoryWatcher } from './watchers/memory-watcher.js';
 import { JailbreakWatcher } from './watchers/jailbreak-watcher.js';
 import { BehaviorWatcher } from './watchers/behavior-watcher.js';
 import { ToolWatcher } from './watchers/tool-watcher.js';
-import type { MiddlebroConfig, EnforcementMode, PolicyConfig, LoggerConfig } from './types.js';
+import type {
+  MiddlebroConfig,
+  EnforcementMode,
+  PolicyConfig,
+  LoggerConfig,
+} from './types.js';
 
 export class Middlebro {
   private readonly mode: EnforcementMode;
@@ -48,7 +53,9 @@ export class Middlebro {
       mode: this.mode,
       policy: this.policy,
       logger: this.loggerConfig,
-      ...(this.onThreatLevelChange ? { onThreatLevelChange: this.onThreatLevelChange } : {}),
+      ...(this.onThreatLevelChange
+        ? { onThreatLevelChange: this.onThreatLevelChange }
+        : {}),
       ...(this.onIntervention ? { onIntervention: this.onIntervention } : {}),
     });
   }
@@ -56,8 +63,16 @@ export class Middlebro {
 
 // Named exports for consumers who want individual pieces
 export { MiddlebroSession } from './session.js';
-export { MiddlebroBlocked, SessionTerminated } from './errors.js';
-export { WatcherRegistry, DefaultSelector, AdaptiveSelector } from './gates/registry.js';
+export {
+  MiddlebroBlocked,
+  SessionTerminated,
+  formatBlockedForTerminal,
+} from './errors.js';
+export {
+  WatcherRegistry,
+  DefaultSelector,
+  AdaptiveSelector,
+} from './gates/registry.js';
 export { ContextWatcher } from './watchers/context-watcher.js';
 export { ObfuscationWatcher } from './watchers/obfuscation-watcher.js';
 export { MemoryWatcher } from './watchers/memory-watcher.js';

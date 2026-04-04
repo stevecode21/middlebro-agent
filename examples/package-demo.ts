@@ -2,7 +2,11 @@
 import OpenAI from 'openai';
 import { createInterface } from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
-import { Middlebro, MiddlebroBlocked } from '../src/index.js';
+import {
+  Middlebro,
+  MiddlebroBlocked,
+  formatBlockedForTerminal,
+} from '../src/index.js';
 import {
   guardMessages,
   guardToolResult,
@@ -39,6 +43,11 @@ const history: Array<{
 
 function print(title: string, body: string): void {
   process.stdout.write(`\n${title}\n${body}\n`);
+}
+
+function printBlocked(error: MiddlebroBlocked): void {
+  const formatted = formatBlockedForTerminal(error, { useColor: true });
+  print(formatted.title, formatted.body);
 }
 
 function extractAssistantText(
@@ -183,10 +192,7 @@ async function interactiveChat(): Promise<void> {
           print('Assistant', answer.slice(0, 500));
         } catch (err: unknown) {
           if (err instanceof MiddlebroBlocked) {
-            print(
-              'Blocked by Middlebro',
-              `${err.message}\nThreats: ${err.threats.map((t) => t.type).join(', ')}`,
-            );
+            printBlocked(err);
             continue;
           }
           print('Error', (err as Error).message);
@@ -217,10 +223,7 @@ async function main(): Promise<void> {
       runPoisonedToolCheck();
     } catch (err: unknown) {
       if (err instanceof MiddlebroBlocked) {
-        print(
-          'Blocked by Middlebro',
-          `${err.message}\nThreats: ${err.threats.map((t) => t.type).join(', ')}`,
-        );
+        printBlocked(err);
       } else {
         print('Error during tool check', (err as Error).message);
       }
