@@ -24,6 +24,10 @@ export class MiddlebroBlocked extends Error {
     this.threats = threats;
     this.severity = top?.severity ?? 'low';
   }
+
+  toTerminal(options: { useColor?: boolean } = {}): FormattedBlockedMessage {
+    return formatBlockedForTerminal(this, options);
+  }
 }
 
 export class SessionTerminated extends Error {
